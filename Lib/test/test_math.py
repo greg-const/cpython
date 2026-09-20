@@ -1321,6 +1321,14 @@ class MathTests(unittest.TestCase):
         self.assertEqual(sumprod([-1], [1.]), -1)
         self.assertEqual(sumprod([1.], [-1]), -1)
 
+        # gh-NNNNN: the exact int total must not be rounded to a double
+        # when it is merged with the extended-precision float total.
+        self.assertEqual(sumprod([2**53 + 1, -2.0**53], [1, 1.0]), 1.0)
+        self.assertEqual(sumprod([2**60 + 1, 2.0**60], [1, -1.0]), 1.0)
+        self.assertEqual(sumprod([2**53 + 1, 2**53 + 1, -2.0**54], [1, 1, 1.0]), 2.0)
+        self.assertEqual(sumprod([2**200, -2.0**200], [1, 1.0]), 0.0)
+        self.assertEqual(sumprod([3, 0.5], [1, 1.0]), 3.5)
+
         # Type preservation and coercion
         for v in [
             (10, 20, 30),

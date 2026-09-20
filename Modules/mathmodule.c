@@ -2472,6 +2472,45 @@ math_sumprod_impl(PyObject *module, PyObject *p, PyObject *q)
             // We're finished, overflowed, have a non-float, or got a non-finite value
             flt_path_enabled = false;
             if (flt_total_in_use) {
+                if (PyLong_CheckExact(total)) {
+                    /* The running total is the exact integer accumulated by
+                       the int path.  Adding a rounded double to it with
+                       PyNumber_Add would convert the integer to a double
+                       first and round twice.  Instead fold the integer into
+                       the triple-length accumulator, so that only the final
+                       tl_to_d rounds.  Each step is exact: tl_fma(x, 1.0, .)
+                       is an error-free transformation, and the remainder
+                       after subtracting the double is an exact integer. */
+                    PyObject *int_part = Py_NewRef(total);
+                    for (int k = 0; k < 3; k++) {
+                        if (_PyLong_IsZero((PyLongObject *)int_part)) {
+                            break;
+                        }
+                        double hi = PyLong_AsDouble(int_part);
+                        if (hi == -1.0 && PyErr_Occurred()) {
+                            Py_DECREF(int_part);
+                            goto err_exit;
+                        }
+                        flt_total = tl_fma(hi, 1.0, flt_total);
+                        PyObject *hi_int = PyLong_FromDouble(hi);
+                        if (hi_int == NULL) {
+                            Py_DECREF(int_part);
+                            goto err_exit;
+                        }
+                        PyObject *rem = PyNumber_Subtract(int_part, hi_int);
+                        Py_DECREF(hi_int);
+                        Py_DECREF(int_part);
+                        if (rem == NULL) {
+                            goto err_exit;
+                        }
+                        int_part = rem;
+                    }
+                    Py_DECREF(int_part);
+                    Py_SETREF(total, PyFloat_FromDouble(0.0));
+                    if (total == NULL) {
+                        goto err_exit;
+                    }
+                }
                 term_i = PyFloat_FromDouble(tl_to_d(flt_total));
                 if (term_i == NULL) {
                     goto err_exit;
